@@ -1,5 +1,5 @@
 {
-    "name": "zumiez/Magento_GoogleTagManager",
+    "name": "aligent/Magento_GoogleTagManager",
     "type": "magento-module",
     "description":"A standard implementation of Google Tag Manager for Magento, with data layer support for transaction and visitor data.",
     "license" : "Open-Software-License-(OSL)",
