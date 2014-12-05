@@ -76,7 +76,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 		$products = array();
 
 		foreach ($collection as $order) {
-            if ($order->getShippingCarrier()) {
+            if ($order->getShippingMethod() && $order->getShippingCarrier()) {
                 $transactionShippingMethod = $order->getShippingCarrier()->getCarrierCode();
             } else {
                 $transactionShippingMethod = null;
