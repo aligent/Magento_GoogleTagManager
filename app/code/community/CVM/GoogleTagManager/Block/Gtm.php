@@ -74,7 +74,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 
         $i = 0;
         $products = array();
-
+        $allCategoryIds = array();
         foreach ($collection as $order) {
             if ($order->getShippingMethod() && $order->getShippingCarrier()) {
                 $transactionShippingMethod = $order->getShippingCarrier()->getCarrierCode();
@@ -110,32 +110,57 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
             // Build products array.
             foreach ($order->getAllVisibleItems() as $item) {
                 $product = Mage::getModel('catalog/product')->load($item->getProductId());
-                $product_categories = $product->getCategoryIds();
-                $categories = array();
-                foreach ($product_categories as $category) {
-                    $categories[] = Mage::getModel('catalog/category')->load($category)->getName();
-                }
+
+                // Add the categories to a collection so they can be loaded later
+                $allCategoryIds = array_merge($allCategoryIds, $product->getCategoryIds());
+
                 if (empty($products[$item->getSku()])) {
                     // Build all fields the first time we encounter this item.
                     $products[$item->getSku()] = array(
+                        'category_ids' => $product->getCategoryIds(),
                         'name' => $this->jsQuoteEscape(Mage::helper('core')->escapeHtml($item->getName())),
                         'sku' => $this->jsQuoteEscape(Mage::helper('core')->escapeHtml($item->getSku())),
-                        'category' => implode('|',$categories),
                         'price' => (double)number_format($item->getBasePrice(),2,'.',''),
                         'quantity' => (int)$item->getQtyOrdered()
                     );
+
+                    $productData = new Varien_Object($products[$item->getSku()]);
+                    // Event to allow other module to add additional product data
+                    Mage::dispatchEvent('cvm_googletagmanager_trans_data_product_before_load',
+                        array('product_data' => $productData, 'product' => $item));
+                    $products[$item->getSku()] = $productData->getData();
                 } else {
                     // If we already have the item, update quantity.
                     $products[$item->getSku()]['quantity'] += (int)$item->getQtyOrdered();
                 }
             }
-
             $i++;
         }
 
-        // Push products into main data array.
-        foreach ($products as $product) {
-            $data['transactionProducts'][] = $product;
+        // Load all used categories in a collection to improve performance
+        $categoryCollection = Mage::getModel('catalog/category')->getCollection()
+            ->addAttributeToSelect('name')
+            ->addAttributeToFilter('entity_id', array('in' => $allCategoryIds))->load();
+        foreach($products as $sku => $product) {
+            $product['category'] = null;
+            foreach($product['category_ids'] as $categoryId) {
+                $categoryModel = $categoryCollection->getItemById($categoryId);
+                if($categoryModel) {
+                    $categoryName = $categoryModel->getName();
+                    if($product['category']) {
+                        $categoryName = '|' . $categoryName;
+                    }
+                    $product['category'] = $product['category'] . $categoryName;
+                }
+            }
+
+            $productData = new Varien_Object($product);
+            // Event to allow other module to add additional product data (after category collection load)
+            Mage::dispatchEvent('cvm_googletagmanager_trans_data_product_after_load',
+                array('product_data' => $productData, 'all_categories' => $categoryCollection));
+            $productData->unsetData('category_ids');
+            // Push products into main data array.
+            $data['transactionProducts'][] = $productData->getData();
         }
 
         // Trim empty fields from the final output.
